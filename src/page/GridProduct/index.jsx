@@ -33,7 +33,7 @@ const GridBooks = () => {
   return (
       <div className="d-flex justify-content-center align-items-center mt-20">
         <div className="section">
-          <Button onClick={addBook}>Add book</Button>
+          {/* <Button onClick={addBook}>Add book</Button> */}
           <div className="grid-book">
             <Row gutter={[16, 16]}>
               {listBooks.map((i, idx) => (
