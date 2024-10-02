@@ -1,0 +1,34 @@
+@import "./assets/scss/index.scss";
+
+.w-100 {
+  width: 100%;
+}
+.w-100vw {
+  width: 100vw;
+}
+.h-100 {
+  height: 100%;
+}
+.h-100vh {
+  height: 100vh;
+}
+.pointer {
+  cursor: pointer;
+}
+.nowrap {
+  flex-wrap: nowrap;
+}
+.text-center {
+  text-align: center;
+}
+.text-end {
+  text-align: end;
+}
+
+.text-uppercase {
+  text-transform: uppercase;
+}
+
+.section {
+  max-width: 1300px;
+}
