@@ -1,25 +1,27 @@
-import { Button, Col, Row, Spin, Image, Space } from "antd";
-import { useEffect, useState } from "react";
-import { toast } from "react-toastify";
-import moment from "moment";
-import _ from "lodash";
-import { database } from "../../firebase";
+import { Button, Col, Row, Space } from "antd";
 import {
-  ref,
-  push,
-  update,
-  remove,
-  onValue,
-  get,
-  orderByChild,
   equalTo,
+  get,
+  onValue,
+  orderByChild,
+  push,
   query,
+  ref,
+  update,
 } from "firebase/database";
+import _ from "lodash";
+import moment from "moment";
+import { useEffect, useState } from "react";
+import { useDispatch } from "react-redux";
+import { toast } from "react-toastify";
+import { database } from "../../firebase";
+import { changeUserInfo } from "../../store/userStore";
 import "./styles.scss";
 
 const listBTN = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
 
 const GridBooks = () => {
+  const dispatch = useDispatch();
   const [listBooks, setListBooks] = useState(() => {
     const savedList = localStorage.getItem("list-book");
     return savedList ? JSON.parse(savedList) : [];
@@ -36,123 +38,127 @@ const GridBooks = () => {
       localStorage.setItem("list-book", JSON.stringify(booksList));
       setListBooks(booksList);
     });
-    // Hủy theo dõi khi component bị unmount
-    return () => unsubscribe(); // Dừng theo dõi khi component unmount
+    return () => unsubscribe(); // Dừng theo dõi khi màn hình được tải lên thành công
   }, []);
   useEffect(() => {
     //Kiểm tra xem có thông tin người dùng quẹt thẻ hay không
     const borrowersRef = ref(database, "borrowers");
     const unsubscribe = onValue(borrowersRef, (snapshot) => {
       const borrowsData = snapshot.val();
-      const borrowsList = borrowsData
-        ? Object.keys(borrowsData).map((key) => ({
-            id: key,
-            ...borrowsData[key],
-          }))
-        : [];
-        console.log("borrowsList", borrowsList)
-      if (borrowsList.length > 0) {
-        checkUser(borrowsList[0].UID);
+      if (!!borrowsData?.UID) {
+        checkUser(borrowsData.UID);
       }
     });
-
-    // Hủy theo dõi khi component bị unmount
-    return () => unsubscribe(); // Dừng theo dõi khi component unmount
+    return () => unsubscribe(); // Dừng theo dõi khi màn hình được tải lên thành công
   }, []);
+
   useEffect(() => {
     //Kiểm tra xem người dùng ấn nút số mấy trên bàn phím
-    const selected_bookRef = ref(database, "selected_book");
-    const unsubscribe = onValue(selected_bookRef, (snapshot) => {
-      const selectedBookData = snapshot.val();
-      const selectedBookList = selectedBookData
-        ? Object.keys(selectedBookData).map((key) => ({
-            id: key,
-            ...selectedBookData[key],
-          }))
-        : [];
-      if (selectedBookList.length > 0) {
-        const number = selectedBookList[0].index_book;
-        if (number === 0) {
-          deleteBorrower();
-        } else {
-          const savedUser = localStorage.getItem("user-info")
-            ? JSON.parse(localStorage.getItem("user-info"))
-            : null;
-          const listBook = localStorage.getItem("list-book")
-            ? JSON.parse(localStorage.getItem("list-book"))
-            : null;
-          if (savedUser && savedUser.id) {
-            const bookSelect = listBook[number - 1]; // Lấy thông tin sách đc chọn
-            console.log("bookSelect: ", bookSelect);
-            if (!bookSelect) {
-              logWarning("Sách không tồn tại!");
-              deleteSelectBook();
-              return;
-            }
-            if (!bookSelect?.quantity) {
-              logWarning("Sách đã hết!");
-              deleteSelectBook();
-            } else {
-              const booksRef = ref(database, `books/${bookSelect.id}`);
-              // Cập nhật số lượng mới
-              update(booksRef, {
-                quantity: bookSelect.quantity - 1,
-              });
-              addBorrow(bookSelect.id, savedUser.id);
-              deleteSelectBook();
-            }
-          } else {
-            deleteSelectBook();
-            logError("Quẹt thẻ để mượn sách!");
+    const tableRef = ref(database, "keyboard");
+    const unsubscribe = onValue(tableRef, (snapshot) => {
+      const respData = snapshot.val();
+      const numberSelect = respData.key;
+      if (numberSelect === 0) {
+        resetBorrower();
+        toast.success("Đăng xuất thành công.");
+      } else if (numberSelect > 0) {
+        const savedUser = localStorage.getItem("user-info")
+          ? JSON.parse(localStorage.getItem("user-info"))
+          : null;
+        const listBook = localStorage.getItem("list-book")
+          ? JSON.parse(localStorage.getItem("list-book"))
+          : null;
+        if (savedUser && savedUser.id) {
+          const bookSelect = listBook[numberSelect - 1]; // Lấy thông tin sách đc chọn
+          if (!bookSelect) {
+            toast.warning("Sách không tồn tại!");
+            resetKeyBoard();
+            return;
           }
+          if (!bookSelect?.quantity) {
+            toast.warning("Sách đã hết!");
+            resetKeyBoard();
+          } else {
+            //Cập nhật bảng selected_book
+            const tableRef = ref(database, `selected_book`);
+            update(tableRef, {
+              book_index: numberSelect,
+            });
+            // Cập nhật số lượng mới
+            const booksRef = ref(database, `books/${bookSelect.id}`);
+            update(booksRef, {
+              quantity: bookSelect.quantity - 1,
+            });
+            addBorrow(bookSelect.id, savedUser.id);
+            //reset giá trị sau khi thực hiện xong các tác vụ
+            setTimeout(() => {
+              resetKeyBoard();
+              resetSelectedBook();
+            }, 1000);
+          }
+        } else {
+          resetKeyBoard();
+          toast.error("Quẹt thẻ để mượn sách!");
         }
       }
     });
-
     // Hủy theo dõi khi component bị unmount
-    return () => unsubscribe(); // Dừng theo dõi khi component unmount
+    return () => unsubscribe(); // Dừng theo dõi khi màn hình được tải lên thành công
   }, []);
 
-  const logError = _.debounce((mess) => {
-    toast.error(mess);
-  }, 0);
-  const logWarning = _.debounce((mess) => {
-    toast.warning(mess);
-  }, 0);
-
-  const deleteBorrower = () => {
-    const booksRef = ref(database, "borrowers");
-    remove(booksRef); // Xóa toàn bộ dữ liệu trong bảng books
-    localStorage.removeItem("user-info");
-    deleteSelectBook();
+  const resetKeyBoard = () => {
+    // reset giá trị key
+    const tableRef = ref(database, `keyboard`);
+    update(tableRef, {
+      key: "",
+    });
   };
-  const deleteSelectBook = () => {
-    const tableRef = ref(database, "selected_book");
-    remove(tableRef); // Xóa toàn bộ dữ liệu trong bảng selected_book
+  const resetSelectedBook = () => {
+    // reset giá trị book_index
+    const tableRef = ref(database, `selected_book`);
+    update(tableRef, {
+      book_index: "",
+    });
+  };
+  const resetBorrower = () => {
+    // reset giá trị UID
+    const tableRef = ref(database, `borrowers`);
+    update(tableRef, {
+      UID: "",
+    });
+    //Xóa thông tin người dùng lưu trên web
+    localStorage.removeItem("user-info");
+    dispatch(changeUserInfo({}));
+    //Reset bảng key_board
+    resetKeyBoard();
+    //Reset bảng selected_book
+    resetSelectedBook();
   };
   const checkUser = async (UID) => {
+    console.log("UID", UID)
     try {
       const tableRef = ref(database, "users");
       const snapshot = await get(
         query(tableRef, orderByChild("UID"), equalTo(UID))
       );
       let studentData = null;
+      console.log('snapshot: ', snapshot);
       snapshot.forEach((childSnapshot) => {
+        console.log('childSnapshot: ', childSnapshot);
         studentData = {
           id: childSnapshot.key,
           ...childSnapshot.val(),
         };
       });
-      console.log(studentData)
       if (!!studentData && studentData.status === 0) {
         localStorage.setItem("user-info", JSON.stringify(studentData));
+        dispatch(changeUserInfo(studentData));
+        toast.success("Quẹt thẻ thành công.");
       } else {
-        logError("Thẻ của bạn không được mượn sách!");
-        deleteBorrower();
+        toast.error("Thẻ của bạn không được mượn sách!");
+        resetBorrower();
       }
-    } catch (err) {
-      console.log(err)
-    }
+    } catch { }
   };
 
   const addBorrow = (book_id, user_id) => {
@@ -164,24 +170,22 @@ const GridBooks = () => {
       borrow_date,
       borrow_status: 0,
       due_date,
-      user_id
+      user_id,
     };
     push(borrowsRef, newBorrows);
   };
 
   const addBorrowers = () => {
-    const borrowersRef = ref(database, "borrowers");
-    const newBorrows = {
-      UID: "123",
-    };
-    push(borrowersRef, newBorrows);
+    const tableRef = ref(database, `borrowers`);
+    update(tableRef, {
+      UID: "187 364 38 43",
+    });
   };
   const onClickNumber = (number) => {
-    const tableRef = ref(database, "selected_book");
-    const newSelected = {
-      index_book: number,
-    };
-    push(tableRef, newSelected);
+    const tableRef = ref(database, "keyboard");
+    update(tableRef, {
+      key: number,
+    });
   };
 
   return (
@@ -200,17 +204,29 @@ const GridBooks = () => {
             {listBooks.map((i, idx) => (
               <Col span={8} key={i.id}>
                 <div className="wrap-book">
-                  <div className="book-info">
-                    <div className="book-title fs-18 fw-600 max-line5">
-                      {i.title}
-                    </div>
-                    <div className="d-flex align-items-center justify-content-space-between w-100">
-                      <div className="book-author max-line1 ">{i.author}</div>
-                      <div className="book-quantity mr-4 fw-600">
-                        {i.quantity}
+                  {i.quantity > 0 ? (
+                    <div className="book-info">
+                      <div className="book-title fs-18 fw-600 max-line5">
+                        {i.title}
+                      </div>
+                      <div className="d-flex align-items-center justify-content-space-between w-100">
+                        <div className="book-author max-line1 ">{i.author}</div>
+                        <div className="book-quantity mr-4 fw-600">
+                          {i.quantity}
+                        </div>
                       </div>
                     </div>
-                  </div>
+                  ) : (
+                    <div
+                      className="d-flex align-item-center justify-content-center"
+                      style={{ height: "calc(100% - 45px)" }}
+                    >
+                      <img
+                        src="https://t3.ftcdn.net/jpg/04/30/38/40/240_F_430384041_1G6UymaKYOJBE7wx5QmSHBeTJInkcQJT.jpg"
+                        alt="Out of stock"
+                      />
+                    </div>
+                  )}
                   <div className="book-number">{idx + 1}</div>
                 </div>
               </Col>

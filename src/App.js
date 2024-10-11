@@ -1,6 +1,6 @@
 import './App.scss';
-import Header from './page/Header'
 import GridProduct from './page/GridProduct';
+import Header from './page/Header';
 
 function App() {
   return (
